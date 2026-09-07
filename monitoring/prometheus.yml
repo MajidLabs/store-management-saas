@@ -1,0 +1,23 @@
+# Points a real Prometheus instance at this app's /metrics endpoint (see
+# apps/api/src/metrics/ - a real endpoint, not a mock, exercised by the
+# e2e suite's "GET /metrics returns real Prometheus text" test).
+#
+# Config syntax validated in this sandbox with `promtool check config` -
+# not run against a live Prometheus server (this sandbox has no target to
+# scrape continuously and no Alertmanager to actually deliver a firing
+# alert to). Point `targets` at your real deployment before relying on it.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: store-saas-api
+    metrics_path: /metrics
+    static_configs:
+      # Docker Compose service name - adjust to your actual deployment
+      # target (a specific host:port, or service-discovery config for
+      # whatever platform you deploy to).
+      - targets: ["api:3000"]

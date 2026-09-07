@@ -1,0 +1,56 @@
+# Alerting rules for the metrics this app actually exposes (see
+# apps/api/src/metrics/) - http_request_duration_seconds / http_requests_total
+# (this app's own), plus prom-client's default process metrics
+# (nodejs_eventloop_lag_seconds, process_resident_memory_bytes, etc).
+#
+# Rule syntax and PromQL validated in this sandbox two ways: `promtool
+# check rules` (syntax) and `promtool test rules alerts.test.yml` (real
+# simulated time-series data, confirming HighErrorRate and EventLoopLagHigh
+# both fire at the correct time with correctly-rendered annotation values,
+# not just that the YAML parses). The actual firing behavior against real
+# production traffic needs a live Prometheus + Alertmanager to verify,
+# which this sandbox doesn't have.
+groups:
+  - name: store-saas-api
+    rules:
+      - alert: HighErrorRate
+        expr: |
+          (
+            sum(rate(http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(http_requests_total[5m]))
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "More than 5% of requests are failing with 5xx"
+          description: "{{ $value | humanizePercentage }} of requests over the last 5m returned a 5xx status."
+
+      - alert: HighLatencyP99
+        expr: |
+          histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le)) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 request latency is above 2s"
+          description: "p99 latency over the last 5m is {{ $value | humanizeDuration }}."
+
+      - alert: EventLoopLagHigh
+        expr: nodejs_eventloop_lag_seconds > 0.5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Node.js event loop lag is high"
+          description: "Event loop lag is {{ $value | humanizeDuration }} - the process is falling behind on incoming work, usually CPU-bound work blocking the loop."
+
+      - alert: ServiceDown
+        expr: up{job="store-saas-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "store-saas-api is not responding to Prometheus scrapes"
+          description: "The /metrics endpoint hasn't been reachable for over a minute - the API is likely down or unreachable."

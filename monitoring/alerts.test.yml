@@ -1,0 +1,53 @@
+rule_files:
+  - alerts.yml
+
+evaluation_interval: 1m
+
+tests:
+  - interval: 1m
+    input_series:
+      # 10 requests/min succeeding, steady, for the whole window - no alert expected.
+      - series: 'http_requests_total{status_code="200"}'
+        values: "0+10x10"
+      - series: 'http_requests_total{status_code="500"}'
+        values: "0+0x10"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts: []
+
+  - interval: 1m
+    input_series:
+      # 10 requests/min succeeding, but starting at minute 0, 1 in 10
+      # additionally fails - a steady 9% error rate, above the 5% threshold,
+      # sustained past the rule's `for: 5m`.
+      - series: 'http_requests_total{status_code="200"}'
+        values: "0+10x15"
+      - series: 'http_requests_total{status_code="500"}'
+        values: "0+1x15"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: HighErrorRate
+        exp_alerts:
+          - exp_labels:
+              severity: critical
+            exp_annotations:
+              summary: "More than 5% of requests are failing with 5xx"
+              description: "9.091% of requests over the last 5m returned a 5xx status."
+
+  - interval: 1m
+    input_series:
+      - series: "nodejs_eventloop_lag_seconds"
+        values: "0.1x5 0.8+0x10"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: EventLoopLagHigh
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: EventLoopLagHigh
+        exp_alerts:
+          - exp_labels:
+              severity: warning
+            exp_annotations:
+              summary: "Node.js event loop lag is high"
+              description: "Event loop lag is 800ms - the process is falling behind on incoming work, usually CPU-bound work blocking the loop."

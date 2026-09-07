@@ -1,0 +1,20 @@
+packages:
+  - "apps/*"
+
+allowBuilds:
+  "@nestjs/core": true
+  bcrypt: true
+  msgpackr-extract: true
+  unrs-resolver: true
+
+# Forces patched versions of transitive dependencies with known CVEs, where
+# a nested package (NestJS's platform-express, Next.js) pulls in an older
+# range internally than what's actually needed. See docs/ARCHITECTURE.md's
+# security review for the advisories these correspond to.
+overrides:
+  multer@<2.2.0: ">=2.2.0"
+  lodash@<4.17.24: ">=4.17.24"
+  postcss@<8.5.23: ">=8.5.23"
+  qs@<6.15.2: ">=6.15.2"
+  body-parser@<1.20.6: ">=1.20.6"
+  file-type@<21.3.2: ">=21.3.2"
