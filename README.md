@@ -54,7 +54,7 @@ pnpm --filter api test:e2e       # API/e2e, against a real Postgres connection
 pnpm --filter web lint
 ```
 
-An interactive browser checklist (**[docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md)**) now covers tenant-isolation cross-store checks and password-reset/CSRF/rate-limit checks specifically (§9-10), plus a focused §11 to re-verify the 5 September 2026 fixes below - separate from the full §1-10 pass, which is already done and not repeated. Its first full run, in September 2026, was manual: the developer clicking through the actual running app in a real Chrome tab, not code review and not automated tooling — and that hands-on pass is exactly how the 4 real bugs below were caught (2 with a different root cause than first suspected - see `docs/ARCHITECTURE.md` §21). None of them were visible from the API-level tests alone; that's the gap manual browser testing exists to catch. All 4 are fixed and covered by new/updated unit and e2e tests, though the fixes themselves haven't yet been re-confirmed in an actual browser tab. Every other check in this project remains at the API level (curl / Supertest).
+An interactive browser checklist (**[docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md)**) now covers tenant-isolation cross-store checks and password-reset/CSRF/rate-limit checks specifically (§9-10), plus a focused §11 that re-verified the 5 September 2026 fixes below - both the full §1-10 pass and the §11 re-verification are done, neither repeated here. The first full run, in September 2026, was manual: the developer clicking through the actual running app in a real Chrome tab, not code review and not automated tooling — and that hands-on pass is exactly how the 4 real bugs below were caught (2 with a different root cause than first suspected - see `docs/ARCHITECTURE.md` §21). None of them were visible from the API-level tests alone; that's the gap manual browser testing exists to catch. All 4 are fixed, covered by new/updated unit and e2e tests, and the fixes themselves have since been re-confirmed directly in an actual browser tab too (§11, see `docs/ARCHITECTURE.md` §22). Every other check in this project remains at the API level (curl / Supertest).
 
 ## Deployment
 
@@ -120,14 +120,14 @@ Every third-party integration has a zero-config local/default implementation, so
 
 This is a production-capable MVP foundation, not yet hardened for commercial-scale workloads. Before real customers and real money:
 
-- Live cloud deployment
-- Real Stripe/SMTP/S3 verification (code paths exist and are tested against local stand-ins, not the real services)
-- Final browser E2E pass — a first pass ran in September 2026 and found 4 real bugs plus one flagged UX gap (password show/hide toggle); all 5 are now fixed and covered by tests (see `docs/ARCHITECTURE.md` §21), but none of the five have been re-confirmed in an actual browser tab yet
+- Live cloud deployment (Docker images are ready; no CI/CD pipeline exists yet - only a scheduled backup workflow, see `docs/ARCHITECTURE.md` §16)
+- Real Stripe/S3 verification (code paths exist and are tested against local stand-ins - Stripe test-mode webhooks, `s3rver` - not the real services); SMTP is the exception, now verified against a real production provider on an authenticated sending domain, not just a local stand-in (see `docs/ARCHITECTURE.md` §11/§20)
+- PostgreSQL Row-Level Security is scoped to the `products` table only - `categories`, `orders`, and other tables still rely on application-level tenant filtering alone, not a database-level policy (see `docs/ARCHITECTURE.md` §7/§20)
 - Production backup/restore verification (tested locally against real PostgreSQL, not against a deployed target)
 - Monitoring/alerting deployment (a Prometheus metrics endpoint and alert definitions exist and are tested with `promtool`; nothing live is scraping or alerting on them yet)
 - Dependency upgrades (Next.js 14→15, `@nestjs/core` 10→11 — both flagged, deliberately not attempted this pass)
 
-A hardening pass (see `docs/ARCHITECTURE.md` §20) already closed a substantial list of related gaps at the code level — a background job queue, the outbox pattern, audit logs, an automated tenant-isolation suite, PostgreSQL Row-Level Security, and more — each genuinely tested locally, not just written. A follow-up pass (§21) ran the first real browser testing checklist and fixed everything it found. Full breakdown of what's implemented-and-tested vs. only planned: **[docs/ARCHITECTURE.md §19-21](docs/ARCHITECTURE.md)**.
+A hardening pass (see `docs/ARCHITECTURE.md` §20) already closed a substantial list of related gaps at the code level — a background job queue, the outbox pattern, audit logs, an automated tenant-isolation suite, PostgreSQL Row-Level Security on `products`, and more — each genuinely tested locally, not just written. A follow-up pass (§21) ran the first real browser testing checklist and fixed everything it found, and a later pass (§22) re-confirmed all 5 of those fixes directly in a browser too - the full checklist (§1-11) is now complete. Full breakdown of what's implemented-and-tested vs. only planned: **[docs/ARCHITECTURE.md §19-22](docs/ARCHITECTURE.md)**.
 
 ## License
 
