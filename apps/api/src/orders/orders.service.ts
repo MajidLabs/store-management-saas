@@ -3,8 +3,6 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
 import {
   InjectTransactionHost,
   TransactionHost,
@@ -24,11 +22,24 @@ import { OutboxService } from '../outbox/outbox.service';
 @Injectable()
 export class OrdersService {
   constructor(
-    @InjectRepository(Order) private readonly orders: Repository<Order>,
     @InjectTransactionHost()
     private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
     private readonly outbox: OutboxService,
   ) {}
+
+  /**
+   * Routes through RlsContextInterceptor's transaction rather than a plain
+   * injected repository - see ProductsService's identical getter for the
+   * full explanation. Only used by findAll/findOne below: create() and
+   * updateStatus() already read/write through this.txHost.tx directly
+   * inside their own withTransaction() blocks (see that method's own
+   * comment), which resolves to the same underlying transaction/connection
+   * as this getter once one is already open on the CLS context - so they
+   * didn't need to change to pick up `orders`' new tenant_isolation policy.
+   */
+  private get orders() {
+    return this.txHost.tx.getRepository(Order);
+  }
 
   /**
    * Uses txHost.withTransaction, not the raw DataSource.transaction this

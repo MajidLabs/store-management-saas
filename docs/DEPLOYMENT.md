@@ -29,7 +29,7 @@ your-domain.com {
 
 `handle_path` (not a plain `reverse_proxy` path matcher) matters here: it strips the `/api` prefix before forwarding, matching this API's routes (`/auth/login`, `/products`, etc. - no `/api` prefix internally). Without it, `your-domain.com/api/auth/login` would forward as `/api/auth/login` to a backend that only has `/auth/login`, a 404 that only shows up once actually deployed behind this proxy - set `NEXT_PUBLIC_API_URL=https://your-domain.com/api` accordingly.
 
-To deploy new changes: `git pull && docker compose up --build -d`. Automating this over SSH from a CI workflow (a `deploy` job triggered on merge to `main`) is the natural next step - see `docs/ARCHITECTURE.md` §16 for what that workflow doesn't yet have (no `ci.yml` or build/push workflow exists in this repository as of this writing).
+To deploy new changes: `git pull && docker compose up --build -d`. A real CI workflow now exists (`ci.yml`, see `docs/ARCHITECTURE.md` §24) and runs lint/test/build on every push, but has no `deploy` job - automating this over SSH from CI, triggered on merge to `main`, is the natural next step once a hosting target is chosen (§17).
 
 ## Option B: A managed container platform (least effort)
 
@@ -81,5 +81,5 @@ None of the above has been executed as a drill in this sandbox (no live deployme
 Not run anywhere (no cloud deployment exists yet at all - see README.md's "Known limitations"), but the shape of one, using what this repo already has:
 
 - A second, separate deployment of the same setup above (Option A or B), with its own database, its own `.env` values, and ideally its own Stripe/SMTP/S3 credentials in test/sandbox mode rather than the same production ones.
-- Point CI at it: a `deploy-staging` job that runs on every merge to `main`, before anything resembling a manual production deploy step, so staging always reflects what's about to ship. This repo doesn't have a CI/CD workflow file for this yet (`.github/workflows/` currently only has `backup.yml`, added in this same pass) - it's a real gap, not something to assume is already wired up.
+- Point CI at it: a `deploy-staging` job that runs on every merge to `main`, before anything resembling a manual production deploy step, so staging always reflects what's about to ship. `.github/workflows/ci.yml` exists now (§24) and runs lint/test/build, but has no deploy job of any kind yet - adding one is a real gap, not something to assume is already wired up.
 - The main thing a staging environment would still be for here: the full interactive browser pass (`docs/TESTING_CHECKLIST.md` §1-11) has already been run and passed - see `docs/ARCHITECTURE.md` §21-22 - but so far only against local dev/Docker Compose, not against anything resembling a deployed target. A staging environment's value is re-running that same checklist somewhere that isn't production, before it's ever run there instead.

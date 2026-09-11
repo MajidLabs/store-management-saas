@@ -1,15 +1,29 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import {
+  InjectTransactionHost,
+  TransactionHost,
+} from '@nestjs-cls/transactional';
+import { TransactionalAdapterTypeOrm } from '@nestjs-cls/transactional-adapter-typeorm';
 import { Category } from './entities/category.entity';
 import { CreateCategoryDto, UpdateCategoryDto } from './dto/category.dto';
 
 @Injectable()
 export class CategoriesService {
   constructor(
-    @InjectRepository(Category)
-    private readonly categories: Repository<Category>,
+    @InjectTransactionHost()
+    private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>,
   ) {}
+
+  /**
+   * Routes through RlsContextInterceptor's transaction rather than a plain
+   * injected repository - see ProductsService's identical getter for the
+   * full explanation. `categories` got the same tenant_isolation policy as
+   * `products` in EnableRlsOnOrdersAndCategories; this getter is the other
+   * half that actually makes it apply to this service's queries.
+   */
+  private get categories() {
+    return this.txHost.tx.getRepository(Category);
+  }
 
   create(storeId: string, dto: CreateCategoryDto): Promise<Category> {
     return this.categories.save(
