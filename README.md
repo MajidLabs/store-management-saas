@@ -120,14 +120,14 @@ Every third-party integration has a zero-config local/default implementation, so
 
 This is a production-capable MVP foundation, not yet hardened for commercial-scale workloads. Before real customers and real money:
 
-- Live cloud deployment (Docker images are ready; no CI/CD pipeline exists yet - only a scheduled backup workflow, see `docs/ARCHITECTURE.md` §16)
+- Live cloud deployment (Docker images are ready, and a real CI pipeline now runs on every push/PR - see `docs/ARCHITECTURE.md` §16/§24 - but nothing has been deployed to an actual live account, and CI has no deploy job since that depends on a hosting target not yet chosen)
 - Real Stripe/S3 verification (code paths exist and are tested against local stand-ins - Stripe test-mode webhooks, `s3rver` - not the real services); SMTP is the exception, now verified against a real production provider on an authenticated sending domain, not just a local stand-in (see `docs/ARCHITECTURE.md` §11/§20)
-- PostgreSQL Row-Level Security is scoped to the `products` table only - `categories`, `orders`, and other tables still rely on application-level tenant filtering alone, not a database-level policy (see `docs/ARCHITECTURE.md` §7/§20)
+- PostgreSQL Row-Level Security now covers `products`, `categories`, and `orders` (see `docs/ARCHITECTURE.md` §23) - `order_items` and other tables still rely on application-level tenant filtering alone, not a database-level policy
 - Production backup/restore verification (tested locally against real PostgreSQL, not against a deployed target)
 - Monitoring/alerting deployment (a Prometheus metrics endpoint and alert definitions exist and are tested with `promtool`; nothing live is scraping or alerting on them yet)
 - Dependency upgrades (Next.js 14→15, `@nestjs/core` 10→11 — both flagged, deliberately not attempted this pass)
 
-A hardening pass (see `docs/ARCHITECTURE.md` §20) already closed a substantial list of related gaps at the code level — a background job queue, the outbox pattern, audit logs, an automated tenant-isolation suite, PostgreSQL Row-Level Security on `products`, and more — each genuinely tested locally, not just written. A follow-up pass (§21) ran the first real browser testing checklist and fixed everything it found, and a later pass (§22) re-confirmed all 5 of those fixes directly in a browser too - the full checklist (§1-11) is now complete. Full breakdown of what's implemented-and-tested vs. only planned: **[docs/ARCHITECTURE.md §19-22](docs/ARCHITECTURE.md)**.
+A hardening pass (see `docs/ARCHITECTURE.md` §20) already closed a substantial list of related gaps at the code level — a background job queue, the outbox pattern, audit logs, an automated tenant-isolation suite, PostgreSQL Row-Level Security on `products`, and more — each genuinely tested locally, not just written. A follow-up pass (§21) ran the first real browser testing checklist and fixed everything it found, and a later pass (§22) re-confirmed all 5 of those fixes directly in a browser too - the full checklist (§1-11) is now complete. RLS was then extended to `categories` and `orders` too (§23), and a real CI pipeline was built and locally verified (§24). Full breakdown of what's implemented-and-tested vs. only planned: **[docs/ARCHITECTURE.md §19-24](docs/ARCHITECTURE.md)**.
 
 ## License
 

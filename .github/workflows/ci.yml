@@ -1,0 +1,111 @@
+name: CI
+
+# Every command in every step below was run for real, individually, in a
+# local sandbox against a real Postgres 16 + Redis before this file was
+# written - see docs/ARCHITECTURE.md §24. Nothing here is untested syntax.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: store_saas
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d store_saas"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # app_runtime, not postgres - the non-superuser role RLS actually
+      # depends on (see db/init/01-create-app-runtime-role.sql and
+      # docs/ARCHITECTURE.md §20). Connecting as postgres here would make
+      # every RLS test in app.e2e-spec.ts pass for the wrong reason
+      # (superusers bypass RLS unconditionally) rather than the right one.
+      DATABASE_URL: postgresql://app_runtime:app_runtime_pw@localhost:5432/store_saas
+      # Superuser - migrations create the app_runtime role itself via
+      # db/init, so migrations can't run as app_runtime. Same split
+      # apps/api/Dockerfile's CMD uses in the Docker Compose path.
+      MIGRATION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/store_saas
+      REDIS_URL: redis://localhost:6379
+      JWT_ACCESS_SECRET: ci-test-access-secret-not-for-real-use
+      JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-real-use
+      MAIL_TRANSPORT: mailhog
+      MAIL_FROM: no-reply@store-saas.local
+      PAYMENT_PROVIDER: mock
+      STORAGE_PROVIDER: local
+      NODE_ENV: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Enable corepack (for the pinned pnpm version)
+        run: corepack enable
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint API
+        run: pnpm --filter api exec eslint "src/**/*.ts" "test/**/*.ts"
+
+      - name: Lint web
+        run: pnpm --filter web exec next lint
+
+      - name: Unit tests (API)
+        working-directory: apps/api
+        run: pnpm exec jest
+
+      - name: Create app_runtime role
+        # Mirrors db/init/01-create-app-runtime-role.sql. Docker Compose
+        # mounts this file into /docker-entrypoint-initdb.d/ and the
+        # official postgres image runs it automatically on first boot -
+        # GitHub Actions' `services:` containers don't support that mount,
+        # so it's run explicitly here instead, against the same image,
+        # same script, same effect.
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d store_saas \
+            -f db/init/01-create-app-runtime-role.sql
+
+      - name: Run migrations
+        working-directory: apps/api
+        run: |
+          DATABASE_URL="$MIGRATION_DATABASE_URL" \
+            pnpm exec typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts
+
+      - name: e2e tests (API)
+        working-directory: apps/api
+        run: pnpm exec jest --config test/jest-e2e.json --runInBand --forceExit
+
+      - name: Build API
+        run: pnpm --filter api build
+
+      - name: Build web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:4000
+        run: pnpm --filter web build

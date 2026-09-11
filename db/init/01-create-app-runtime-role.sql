@@ -18,7 +18,18 @@
 -- this script agree out of the box - change both together via
 -- APP_RUNTIME_DB_PASSWORD if you're not just running this locally.
 --
--- NOT verified against a real `docker compose up` - this sandbox has no
+-- The SQL logic in this file (role creation, grants, RLS enforcement) is
+-- now verified two ways: directly against a local PostgreSQL 16 instance
+-- (see the e2e Row-Level Security suite in apps/api/test/app.e2e-spec.ts
+-- and docs/ARCHITECTURE.md §20/§23), and separately in CI, where this
+-- exact file is run as a step against a real postgres:16-alpine container
+-- (see .github/workflows/ci.yml) - same image docker-compose.yml uses.
+-- What CI does NOT verify is the docker-entrypoint-initdb.d auto-run
+-- mechanism specifically (GitHub Actions service containers don't support
+-- that mount, so CI runs this file as an explicit step instead) - that
+-- part still rests on the inference in docs/ARCHITECTURE.md §20's RLS
+-- section (the browser-testing pass needing a working `docker compose up`
+-- to run at all), not a dedicated check of its own.
 -- Docker to run that in. The equivalent role creation, grants, and RLS
 -- enforcement (including a raw unfiltered query proving RLS actually
 -- blocks cross-tenant access) WAS verified directly against a real local

@@ -395,16 +395,12 @@ describe('Tenant isolation (e2e)', () => {
     // promote a real registered user directly via the repository, the same
     // way a one-off DB update would in a real environment.
     const superAdminEmail = `tenant-superadmin-${Date.now()}@example.com`;
-    const superAdminRegisterRes = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({
-        email: superAdminEmail,
-        password: 'SuperSecret123',
-        storeName: 'Ignored - promoted to SuperAdmin below',
-      });
-    const users = moduleFixture.get<Repository<User>>(
-      getRepositoryToken(User),
-    );
+    await request(app.getHttpServer()).post('/auth/register').send({
+      email: superAdminEmail,
+      password: 'SuperSecret123',
+      storeName: 'Ignored - promoted to SuperAdmin below',
+    });
+    const users = moduleFixture.get<Repository<User>>(getRepositoryToken(User));
     await users.update({ email: superAdminEmail }, { role: Role.SUPER_ADMIN });
     const superAdminLoginRes = await request(app.getHttpServer())
       .post('/auth/login')
@@ -519,7 +515,11 @@ describe('Billing plan / staff limits (e2e)', () => {
     ownerPassword = 'SuperSecret123';
     const registerRes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: ownerEmail, password: ownerPassword, storeName: 'Billing E2E Store' });
+      .send({
+        email: ownerEmail,
+        password: ownerPassword,
+        storeName: 'Billing E2E Store',
+      });
     ownerToken = extractAccessTokenCookie(registerRes);
 
     const meRes = await request(app.getHttpServer())
@@ -729,11 +729,12 @@ describe('Outbox pattern (e2e)', () => {
  * deliberately UNFILTERED query directly against the database - the
  * app-level check this bypasses entirely is exactly the kind of bug (a
  * forgotten storeId clause in some future query) RLS exists to catch. See
- * docs/ARCHITECTURE.md §20 for the full explanation of what this is
- * layered under (a non-superuser `app_runtime` role, FORCE ROW LEVEL
- * SECURITY, a policy, and the RlsContextInterceptor/txHost wiring that
- * sets the session variable that policy checks) and why it's scoped to
- * `products` only, not every tenant table.
+ * docs/ARCHITECTURE.md §20 (products) and §23 (categories, orders) for the
+ * full explanation of what this is layered under (a non-superuser
+ * `app_runtime` role, FORCE ROW LEVEL SECURITY, a policy, and the
+ * RlsContextInterceptor/txHost wiring that sets the session variable that
+ * policy checks) and why `order_items` deliberately isn't included (no
+ * `store_id` column of its own - see that migration's comment).
  */
 describe('Row-Level Security (e2e)', () => {
   let app: INestApplication;
@@ -753,12 +754,16 @@ describe('Row-Level Security (e2e)', () => {
     await app.close();
   });
 
-  it('an unfiltered query cannot see another store\'s product, even with zero app-level filtering', async () => {
+  it("an unfiltered query cannot see another store's product, even with zero app-level filtering", async () => {
     // Two real stores with their own real products, through the normal API.
     const storeAEmail = `rls-a-${Date.now()}@example.com`;
     const storeARes = await request(app.getHttpServer())
       .post('/auth/register')
-      .send({ email: storeAEmail, password: 'SuperSecret123', storeName: 'RLS Store A' });
+      .send({
+        email: storeAEmail,
+        password: 'SuperSecret123',
+        storeName: 'RLS Store A',
+      });
     const storeAToken = extractAccessTokenCookie(storeARes);
     const catA = await request(app.getHttpServer())
       .post('/categories')
@@ -767,13 +772,19 @@ describe('Row-Level Security (e2e)', () => {
     const productA = await request(app.getHttpServer())
       .post('/products')
       .set('Authorization', `Bearer ${storeAToken}`)
-      .send({ name: 'Store A Secret', price: 1, stock: 1, categoryId: catA.body.id });
+      .send({
+        name: 'Store A Secret',
+        price: 1,
+        stock: 1,
+        categoryId: catA.body.id,
+      });
 
     const storeBEmail = `rls-b-${Date.now()}@example.com`;
-    const storeBRes = await request(app.getHttpServer())
-      .post('/auth/register')
-      .send({ email: storeBEmail, password: 'SuperSecret123', storeName: 'RLS Store B' });
-    const storeBToken = extractAccessTokenCookie(storeBRes);
+    await request(app.getHttpServer()).post('/auth/register').send({
+      email: storeBEmail,
+      password: 'SuperSecret123',
+      storeName: 'RLS Store B',
+    });
 
     const dataSource = app.get(DataSource);
 
@@ -813,6 +824,93 @@ describe('Row-Level Security (e2e)', () => {
       const visibleToA = await queryRunner.query('SELECT * FROM products');
       expect(
         visibleToA.some((p: { id: string }) => p.id === productA.body.id),
+      ).toBe(true);
+    } finally {
+      await queryRunner.rollbackTransaction();
+      await queryRunner.release();
+    }
+  });
+
+  it("an unfiltered query cannot see another store's category or order, even with zero app-level filtering", async () => {
+    // Categories and orders share one store pair in a single test,
+    // deliberately, rather than each registering its own like the
+    // products test above does - this describe block's own /auth/register
+    // calls are all that's tested here, and register is throttled to 5/60s
+    // (see AuthController); a third self-contained test would have pushed
+    // this describe block's total past that limit.
+    const storeAEmail = `rls-b-a-${Date.now()}@example.com`;
+    const storeARes = await request(app.getHttpServer())
+      .post('/auth/register')
+      .send({
+        email: storeAEmail,
+        password: 'SuperSecret123',
+        storeName: 'RLS Store A2',
+      });
+    const storeAToken = extractAccessTokenCookie(storeARes);
+    const catA = await request(app.getHttpServer())
+      .post('/categories')
+      .set('Authorization', `Bearer ${storeAToken}`)
+      .send({ name: 'Store A Secret Category' });
+    const productA = await request(app.getHttpServer())
+      .post('/products')
+      .set('Authorization', `Bearer ${storeAToken}`)
+      .send({
+        name: 'A Product',
+        price: 1,
+        stock: 5,
+        categoryId: catA.body.id,
+      });
+    const orderA = await request(app.getHttpServer())
+      .post('/orders')
+      .set('Authorization', `Bearer ${storeAToken}`)
+      .send({ items: [{ productId: productA.body.id, quantity: 1 }] });
+
+    const storeBEmail = `rls-b-b-${Date.now()}@example.com`;
+    await request(app.getHttpServer()).post('/auth/register').send({
+      email: storeBEmail,
+      password: 'SuperSecret123',
+      storeName: 'RLS Store B2',
+    });
+
+    const dataSource = app.get(DataSource);
+    const queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const storeBUser = await queryRunner.manager.findOne(User, {
+        where: { email: storeBEmail },
+      });
+      await queryRunner.query(
+        `SELECT set_config('app.current_store_id', $1, true)`,
+        [storeBUser!.storeId],
+      );
+      const catsVisibleToB = await queryRunner.query(
+        'SELECT * FROM categories',
+      );
+      expect(
+        catsVisibleToB.some((c: { id: string }) => c.id === catA.body.id),
+      ).toBe(false);
+      const ordersVisibleToB = await queryRunner.query('SELECT * FROM orders');
+      expect(
+        ordersVisibleToB.some((o: { id: string }) => o.id === orderA.body.id),
+      ).toBe(false);
+
+      const storeAUser = await queryRunner.manager.findOne(User, {
+        where: { email: storeAEmail },
+      });
+      await queryRunner.query(
+        `SELECT set_config('app.current_store_id', $1, true)`,
+        [storeAUser!.storeId],
+      );
+      const catsVisibleToA = await queryRunner.query(
+        'SELECT * FROM categories',
+      );
+      expect(
+        catsVisibleToA.some((c: { id: string }) => c.id === catA.body.id),
+      ).toBe(true);
+      const ordersVisibleToA = await queryRunner.query('SELECT * FROM orders');
+      expect(
+        ordersVisibleToA.some((o: { id: string }) => o.id === orderA.body.id),
       ).toBe(true);
     } finally {
       await queryRunner.rollbackTransaction();

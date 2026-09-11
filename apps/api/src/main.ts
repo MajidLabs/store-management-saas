@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- cookie-parser is CJS; a standard import risks changing its interop shape (app.use(cookieParser()) expects a callable, not { default: fn }) - not worth the runtime risk to satisfy this rule.
 import cookieParser = require('cookie-parser');
 import * as path from 'path';
 import { AppModule } from './app.module';
