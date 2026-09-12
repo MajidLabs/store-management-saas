@@ -43,7 +43,10 @@ export class BillingService {
    * into a store that is currently over its plan's staff limit, regardless
    * of how it got that way.
    */
-  private async assertStaffFitsPlan(storeId: string, plan: Plan): Promise<void> {
+  private async assertStaffFitsPlan(
+    storeId: string,
+    plan: Plan,
+  ): Promise<void> {
     const limit = PLAN_LIMITS[plan].maxStaff;
     const staffCount = await this.users.count({
       where: { storeId, role: Role.STAFF },
