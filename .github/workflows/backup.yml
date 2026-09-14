@@ -1,28 +1,36 @@
 name: Scheduled database backup
 
-# Runs backup.sh on a schedule against whatever DATABASE_URL secret is
-# configured, and uploads the dump as a workflow artifact (GitHub's default
-# 90-day retention - see retention-days below to change that) as a baseline.
+# Runs backup.sh against whatever DATABASE_URL secret is configured, and
+# uploads the dump as a workflow artifact (GitHub's default 90-day
+# retention - see retention-days below to change that) as a baseline.
 # For real production use, swap the upload step for pushing to S3 (this
 # repo already has S3StorageProvider's env vars for that, and pg_dump's
 # output is just bytes - `aws s3 cp` or the same @aws-sdk/client-s3
 # used elsewhere in this repo would work equally well here) - artifacts
 # are fine as a starting point, not as the only copy of a real backup.
 #
-# Needs a DATABASE_URL secret pointing at the actual production database -
-# this workflow does nothing useful until that's configured (Settings →
-# Secrets and variables → Actions → New repository secret).
+# STATUS (Sep 2026): the automatic daily schedule is intentionally
+# disabled. This project has no live production database (deployment was
+# deliberately deferred - see docs/ARCHITECTURE.md), so a scheduled run
+# has nothing real to back up and would just fail every night. backup.sh
+# and restore.sh themselves are verified directly against a real local
+# Postgres (pg_dump/restore round-trip) - only this schedule/wiring layer
+# is unverified against real GitHub Actions infrastructure.
 #
-# NOT run in this sandbox - GitHub Actions' scheduler and secrets don't
-# exist here to test against. backup.sh and restore.sh, which this calls,
-# were verified directly (see their own comments) - this workflow is just
-# the schedule/wiring around them, unverified until it actually runs once
-# a real DATABASE_URL secret exists.
+# The workflow is kept, not deleted, so it can be re-enabled the moment a
+# real DATABASE_URL secret exists: add the secret (Settings → Secrets and
+# variables → Actions → New repository secret), then either restore the
+# `schedule:` trigger below or just run it manually via workflow_dispatch
+# (Actions tab → Scheduled database backup → Run workflow) any time before
+# that, once the secret is set - workflow_dispatch works identically to a
+# scheduled run.
+#
+# To re-enable the daily schedule once a real secret is set, uncomment:
+# on:
+#   schedule:
+#     - cron: '0 3 * * *'   # 03:00 UTC daily - adjust to your actual RPO
+#   workflow_dispatch: {}
 on:
-  schedule:
-    # 03:00 UTC daily. Adjust to your actual recovery-point objective - see
-    # backup.sh's comment on BACKUP_RETENTION_COUNT.
-    - cron: '0 3 * * *'
   workflow_dispatch: {}
 
 jobs:
