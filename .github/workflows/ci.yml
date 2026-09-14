@@ -52,6 +52,16 @@ jobs:
       REDIS_URL: redis://localhost:6379
       JWT_ACCESS_SECRET: ci-test-access-secret-not-for-real-use
       JWT_REFRESH_SECRET: ci-test-refresh-secret-not-for-real-use
+      # Both required - AuthService passes these straight to jsonwebtoken's
+      # `expiresIn` with no fallback default (see auth.service.ts); unset,
+      # it throws "expiresIn should be a number of seconds or string
+      # representing a timespan" on the very first login, failing nearly
+      # every e2e test at once. This is exactly what happened: these two
+      # lines were missing from the first version of this workflow, it
+      # worked locally only because a real apps/api/.env with these set
+      # was used there, and this file had no equivalent.
+      JWT_ACCESS_EXPIRY: 15m
+      JWT_REFRESH_EXPIRY: 7d
       MAIL_TRANSPORT: mailhog
       MAIL_FROM: no-reply@store-saas.local
       PAYMENT_PROVIDER: mock
