@@ -4,7 +4,7 @@ A multi-tenant SaaS for managing retail stores: store owners sign up, subscribe 
 
 ## Stack
 
-Next.js 14 (admin panel) · NestJS + TypeORM + PostgreSQL (API) · Docker Compose · GitHub Actions (scheduled database backups)
+Next.js 14 (admin panel) · NestJS + TypeORM + PostgreSQL (API) · Docker Compose · GitHub Actions (CI on every push/PR; on-demand database backups)
 
 ## Architecture
 
@@ -41,12 +41,12 @@ Full detail on each of these, including how they were actually verified: **[docs
 - Prometheus metrics (`/metrics`) alongside structured logs
 - Swagger / OpenAPI docs
 - Unit + API/e2e test suites, run locally against a real PostgreSQL service
-- Docker Compose for local development and deployment; a scheduled GitHub Actions workflow for automated database backups (no CI pipeline yet — see docs/ARCHITECTURE.md §16)
+- Docker Compose for local development and deployment; a real CI pipeline (`ci.yml`) runs lint, unit tests, e2e tests, and both builds on every push/PR against real Postgres and Redis service containers — confirmed green on actual GitHub Actions infrastructure, not just locally (see docs/ARCHITECTURE.md §24); a GitHub Actions workflow for database backups (`backup.yml`) is wired and ready but manually-triggered only until a live production database exists
 - Backup/restore scripts, verified against a real PostgreSQL instance
 
 ## Testing
 
-Unit and API/e2e suites are included and run locally against a real PostgreSQL service — nothing is mocked at the database layer. No CI workflow runs them automatically yet (see `docs/ARCHITECTURE.md` §16). The SMTP and S3 storage providers are each tested against a real local server of their kind (not a mock of the SDK), and Stripe webhook handling is tested with genuinely-signed test events. See **[docs/ARCHITECTURE.md §13](docs/ARCHITECTURE.md)** for coverage detail, and **§20** for an August 2026 pass that found and fixed a real e2e-suite bug (stale from the cookie-auth migration) alongside the additions above.
+Unit and API/e2e suites are included and run locally against a real PostgreSQL service — nothing is mocked at the database layer. They also run automatically on every push/PR via GitHub Actions CI (`ci.yml`), confirmed green on real GitHub Actions infrastructure (see `docs/ARCHITECTURE.md` §24). The SMTP and S3 storage providers are each tested against a real local server of their kind (not a mock of the SDK), and Stripe webhook handling is tested with genuinely-signed test events. See **[docs/ARCHITECTURE.md §13](docs/ARCHITECTURE.md)** for coverage detail, and **§20** for an August 2026 pass that found and fixed a real e2e-suite bug (stale from the cookie-auth migration) alongside the additions above.
 
 ```bash
 pnpm --filter api test           # unit
