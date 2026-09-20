@@ -2,6 +2,33 @@
 
 A multi-tenant SaaS for managing retail stores: store owners sign up, subscribe to a plan, and manage their product catalog, inventory, and orders through an admin panel. Staff can be invited with limited permissions. A platform SuperAdmin oversees every tenant store. This is a back-office management tool, not a public customer-facing storefront.
 
+## Screenshots
+
+![Walkthrough demo](docs/screenshots/demo-walkthrough.gif)
+
+<table>
+<tr>
+<td><img src="docs/screenshots/00-landing.png" alt="Sign in" width="300"></td>
+<td><img src="docs/screenshots/01-dashboard.png" alt="Store owner dashboard" width="300"></td>
+<td><img src="docs/screenshots/02-products.png" alt="Product catalog" width="300"></td>
+</tr>
+<tr>
+<td align="center">Sign in</td>
+<td align="center">Store owner dashboard</td>
+<td align="center">Product catalog</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/03-orders.png" alt="Orders" width="300"></td>
+<td><img src="docs/screenshots/05-admin-stores.png" alt="SuperAdmin: all stores" width="300"></td>
+<td></td>
+</tr>
+<tr>
+<td align="center">Orders</td>
+<td align="center">SuperAdmin — all stores</td>
+<td></td>
+</tr>
+</table>
+
 ## Stack
 
 Next.js 14 (admin panel) · NestJS + TypeORM + PostgreSQL (API) · Docker Compose · GitHub Actions (CI on every push/PR; on-demand database backups)
