@@ -1,6 +1,6 @@
 # Store Management SaaS — Architecture
 
-**Status:** Build complete and verified. Real Postgres/Redis service containers, a green CI pipeline on every push/PR, an automated e2e suite, and a full manual browser-testing pass are all in place. PostgreSQL Row-Level Security covers `products`, `categories`, and `orders`. What's not yet done: live cloud deployment, and two third-party integrations beyond test/local mode — Stripe live mode and a real S3/R2 bucket. See [Production Readiness](#16-production-readiness) below, and [CHANGELOG.md](./CHANGELOG.md) for the full build and testing history.
+**Status:** Build complete and verified. Real Postgres/Redis service containers, a green CI pipeline on every push/PR, an automated e2e suite, and a full manual browser-testing pass are all in place. PostgreSQL Row-Level Security covers `products`, `categories`, and `orders`. What's not yet done: live cloud deployment, and two third-party integrations beyond test/local mode — Stripe live mode and a real S3/R2 bucket. See [Production Readiness](#17-production-readiness) below, and [CHANGELOG.md](./CHANGELOG.md) for the full build and testing history.
 
 ## 1. Overview
 
