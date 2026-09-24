@@ -11,10 +11,34 @@ import { Plan } from '../common/enums/plan.enum';
 import { SubscriptionStatus } from '../common/enums/subscription-status.enum';
 
 const SALT_ROUNDS = 10;
+const nodeEnv = process.env.NODE_ENV || 'development';
+
+// SuperAdmin is a real privileged platform-management account, unlike the
+// demo store owner below (which is meant to have a public, documented
+// login for portfolio visitors). Refusing to seed it with a password
+// that's sitting in this public repo is much better than silently doing
+// so in a real deployment.
+function requireInProduction(
+  value: string | undefined,
+  envVarName: string,
+  devDefault: string,
+): string {
+  if (value) return value;
+  if (nodeEnv === 'production') {
+    throw new Error(
+      `${envVarName} must be set when NODE_ENV=production - refusing to seed a SuperAdmin account with a public default password.`,
+    );
+  }
+  return devDefault;
+}
 
 async function seedSuperAdmin() {
   const email = process.env.SEED_SUPER_ADMIN_EMAIL || 'admin@example.com';
-  const password = process.env.SEED_SUPER_ADMIN_PASSWORD || 'ChangeMe123!';
+  const password = requireInProduction(
+    process.env.SEED_SUPER_ADMIN_PASSWORD,
+    'SEED_SUPER_ADMIN_PASSWORD',
+    'ChangeMe123!',
+  );
 
   const repo = AppDataSource.getRepository(User);
   const existing = await repo.findOne({ where: { email } });
