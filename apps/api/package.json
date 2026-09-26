@@ -48,7 +48,7 @@
     "multer": "^2.2.0",
     "nestjs-cls": "^6.2.2",
     "nestjs-pino": "^4.6.1",
-    "nodemailer": "^9.1.1",
+    "nodemailer": "^10.0.10",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.22.0",
