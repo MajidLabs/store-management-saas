@@ -133,6 +133,14 @@ pnpm --filter web dev            # http://localhost:3001
 
 Two runbooks — a VPS with `docker compose`, or a managed container platform: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**.
 
+### Live deployment (verified)
+
+Deployed and manually tested live at a public domain, reachable from outside the host network — not just `localhost`:
+
+- **Reverse tunnel**: the host machine sits behind CGNAT with no public IP, so an outbound-only Cloudflare Tunnel (`cloudflared`) running on a small relay VPS forwards a public hostname to the host machine over SSH remote port forwarding (`ssh -R`) — no inbound ports opened on the host itself.
+- **Single-origin reverse proxy**: `web` and `api` are fronted by a small Caddy proxy on one port, splitting by path (`/api/*` → `api:3000`, everything else → `web:3001`) — the same path-splitting approach as the Caddyfile in `docs/DEPLOYMENT.md`, except listening on a plain `:8080` instead of the domain directly, since Cloudflare Tunnel (not Caddy) terminates TLS and owns the public hostname here. This matters because `NEXT_PUBLIC_API_URL` is baked into the Next.js bundle at **build time**, not read at container runtime — the web image must be built with `NEXT_PUBLIC_API_URL=https://<your-domain>/<api-path>` pointing at the final public URL *before* `docker compose up`, matching the build-time-variable guidance in `docs/DEPLOYMENT.md`. Building it with the default (`http://localhost:3000`) produces an image that silently fails every API call from any browser but the one that built it — the browser tries to reach its own `localhost`, not the real server.
+- Full manual testing checklist (register, products + image upload, orders with stock adjustment, staff RBAC, billing mock-upgrade, SuperAdmin suspend/reactivate) passed end-to-end against the live public URL, not just `localhost`.
+
 ### Zero-config by default
 
 Every third-party integration has a zero-config local/default implementation, so the app is fully usable immediately after `docker compose up`:
@@ -147,7 +155,7 @@ Every third-party integration has a zero-config local/default implementation, so
 
 This is a production-capable MVP foundation, not yet hardened for commercial-scale workloads. Before real customers and real money:
 
-- Live cloud deployment (Docker images are ready, and a real CI pipeline now runs on every push/PR - see [docs/ARCHITECTURE.md §16](docs/ARCHITECTURE.md) and [CHANGELOG.md](docs/CHANGELOG.md) — "CI/CD Pipeline Built" - but nothing has been deployed to an actual live account, and CI has no deploy job since that depends on a hosting target not yet chosen)
+- Live cloud deployment: now done and manually verified end-to-end at a public domain (see "Live deployment (verified)" above) — but CI still has no deploy job, since the hosting target used (an SSH reverse tunnel through a relay VPS, chosen to work around the host machine's CGNAT/no-public-IP network) is host-specific, not something CI could automate generically without knowing the target environment
 - Real Stripe/S3 verification (code paths exist and are tested against local stand-ins - Stripe test-mode webhooks, `s3rver` - not the real services); SMTP is the exception, now verified against a real production provider on an authenticated sending domain, not just a local stand-in (see [docs/ARCHITECTURE.md §11](docs/ARCHITECTURE.md) and [CHANGELOG.md](docs/CHANGELOG.md) — "Production Hardening Pass")
 - PostgreSQL Row-Level Security now covers `products`, `categories`, and `orders` (see [CHANGELOG.md](docs/CHANGELOG.md) — "RLS Extended to Categories and Orders") - `order_items` and other tables still rely on application-level tenant filtering alone, not a database-level policy
 - Production backup/restore verification (tested locally against real PostgreSQL, not against a deployed target)

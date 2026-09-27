@@ -40,7 +40,7 @@ jobs:
 
     env:
       # app_runtime, not postgres - the non-superuser role RLS actually
-      # depends on (see db/init/01-create-app-runtime-role.sql and
+      # depends on (see db/init/01-create-app-runtime-role.sh and
       # docs/ARCHITECTURE.md §20). Connecting as postgres here would make
       # every RLS test in app.e2e-spec.ts pass for the wrong reason
       # (superusers bypass RLS unconditionally) rather than the right one.
@@ -92,15 +92,22 @@ jobs:
         run: pnpm exec jest
 
       - name: Create app_runtime role
-        # Mirrors db/init/01-create-app-runtime-role.sql. Docker Compose
+        # Mirrors db/init/01-create-app-runtime-role.sh. Docker Compose
         # mounts this file into /docker-entrypoint-initdb.d/ and the
         # official postgres image runs it automatically on first boot -
         # GitHub Actions' `services:` containers don't support that mount,
         # so it's run explicitly here instead, against the same image,
-        # same script, same effect.
-        run: |
-          PGPASSWORD=postgres psql -h localhost -U postgres -d store_saas \
-            -f db/init/01-create-app-runtime-role.sql
+        # same script, same effect - just over TCP with an explicit
+        # host/password instead of the Unix socket + trust auth Docker's
+        # init process uses. app_runtime_pw here matches DATABASE_URL
+        # above - keep both in sync if either changes.
+        env:
+          PGHOST: localhost
+          PGPASSWORD: postgres
+          POSTGRES_USER: postgres
+          POSTGRES_DB: store_saas
+          APP_RUNTIME_DB_PASSWORD: app_runtime_pw
+        run: sh db/init/01-create-app-runtime-role.sh
 
       - name: Run migrations
         working-directory: apps/api

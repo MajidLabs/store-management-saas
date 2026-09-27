@@ -6,6 +6,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       POSTGRES_DB: ${POSTGRES_DB:-store_saas}
+      # Read by db/init/01-create-app-runtime-role.sh so the app_runtime
+      # role's password always matches what the api service's DATABASE_URL
+      # actually uses below - never hardcode this in the init script itself.
+      APP_RUNTIME_DB_PASSWORD: ${APP_RUNTIME_DB_PASSWORD:-app_runtime_pw}
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -114,6 +118,17 @@ services:
       - "${WEB_PORT:-3001}:3001"
     depends_on:
       - api
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - api
+      - web
 
 volumes:
   pgdata:

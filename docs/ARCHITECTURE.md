@@ -87,7 +87,7 @@ store-saas/
 │           └── lib/           # api client, typed api.ts, auth-context, types
 ├── scripts/                 # backup.sh, restore.sh, load-test.js
 ├── monitoring/              # prometheus.yml, alerts.yml (+ alerts.test.yml)
-├── db/init/                 # 01-create-app-runtime-role.sql (RLS role)
+├── db/init/                 # 01-create-app-runtime-role.sh (RLS role)
 ├── docker-compose.yml
 ├── .github/workflows/        # ci.yml, backup.yml
 ├── docs/
