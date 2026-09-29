@@ -1,6 +1,6 @@
 # Deployment
 
-Everything is containerized (see the root `Dockerfile`s and `docker-compose.yml`), so any Docker-capable host works. Two concrete options, from least to most effort. **Neither of these was executed from the sandbox this project was built in** - outbound network access there is limited to package registries and GitHub, not cloud providers, and doing so would require your own account's credentials, which weren't available and shouldn't be pasted into a chat. Both are standard, well-documented paths; follow them directly against your own account.
+Everything is containerized (see the root `Dockerfile`s and `docker-compose.yml`), so any Docker-capable host works. Two concrete options, from least to most effort. **Neither of these two options was executed as written** - the live instance uses a different setup (a Cloudflare Tunnel from a single host, see the README's "Live deployment (verified)" section). Both are standard, well-documented paths; follow them directly against your own account.
 
 ## Option A: A single VPS (cheapest, full control)
 
@@ -74,7 +74,7 @@ If a deploy goes bad, in order of how fast each one is to actually do:
    - If the migration changed or removed something the previous code depends on: run that migration's `down()` explicitly before redeploying the old image - `docker compose exec api node_modules/.bin/typeorm migration:revert -d dist/database/data-source.js` (reverts exactly one migration; run it again to revert further back). Every migration in this repo has a real `down()` - see `apps/api/src/database/migrations/`.
 3. **If the database itself is corrupted, not just the schema** (bad data written by the bad deploy, not a schema mismatch): restore from the most recent backup instead of trying to hand-fix data - see `scripts/restore.sh` and the backup section in `docs/ARCHITECTURE.md` §20. This loses any writes since that backup, which is exactly why automated, frequent backups (`.github/workflows/backup.yml` - currently manual-trigger only until a real `DATABASE_URL` secret exists; see the workflow file's own comments) matter more than this runbook does.
 
-None of the above has been executed as a drill in this sandbox (no live deployment exists to roll back - see README.md's "Known limitations"). `migration:revert` itself was exercised locally against a real Postgres instance (each migration's `down()` runs as part of local development, not just written and assumed correct), but the *deploy-a-previous-image* half of this runbook is guidance based on how these platforms document rollback, not something run end-to-end.
+None of the above has been executed as a rollback drill (the live instance is a single host running behind a tunnel, not one of these two setups - see README.md's "Live deployment (verified)"). `migration:revert` itself was exercised locally against a real Postgres instance (each migration's `down()` runs as part of local development, not just written and assumed correct), but the *deploy-a-previous-image* half of this runbook is guidance based on how these platforms document rollback, not something run end-to-end.
 
 ## Staging environment
 

@@ -1,6 +1,6 @@
 # Store Management SaaS — Architecture
 
-**Status:** Build complete and verified. Real Postgres/Redis service containers, a green CI pipeline on every push/PR, an automated e2e suite, and a full manual browser-testing pass are all in place. PostgreSQL Row-Level Security covers `products`, `categories`, and `orders`. What's not yet done: live cloud deployment, and two third-party integrations beyond test/local mode — Stripe live mode and a real S3/R2 bucket. See [Production Readiness](#17-production-readiness) below, and [CHANGELOG.md](./CHANGELOG.md) for the full build and testing history.
+**Status:** Build complete and verified. Real Postgres/Redis service containers, a green CI pipeline on every push/PR, an automated e2e suite, and a full manual browser-testing pass are all in place. PostgreSQL Row-Level Security covers `products`, `categories`, and `orders`. It is deployed and manually verified live at a public domain, hosted from a single machine behind CGNAT via a Cloudflare Tunnel (see [Deployment](#16-deployment)). What's not yet done: a managed cloud deployment, and two third-party integrations beyond test/local mode — Stripe live mode and a real S3/R2 bucket. See [Production Readiness](#17-production-readiness) below, and [CHANGELOG.md](./CHANGELOG.md) for the full build and testing history.
 
 ## 1. Overview
 
@@ -14,16 +14,20 @@ This is a back-office / management tool, not a public customer-facing storefront
 - **Admin-only frontend**: the Next.js app is an authenticated back-office panel, not a public shop.
 - **"Test payment" = subscription billing** (Free/Pro plans), implemented as a swappable provider — mock by default, Stripe test mode optional.
 - **MVP-grade, not enterprise-hardened**: a real, working foundation covering every requested piece. Full commercial-scale hardening (security audits, full observability, load testing at production scale) is out of scope.
-- **Cloud deployment**: Docker images are ready to deploy, and CI runs on every push/PR. The actual deploy step on a live cloud account is a separate, manual decision (see [Deployment](#16-deployment)) — CI has no deploy job.
+- **Deployment**: Docker images are ready to deploy, and CI runs on every push/PR. The live instance runs from a single host machine exposed through a Cloudflare Tunnel (see [Deployment](#16-deployment)); CI has no deploy job because that target is host-specific.
 
 ## 3. Tech Stack
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Frontend | Next.js 14 (App Router, standalone output), TypeScript, TailwindCSS, TanStack Query | Admin panel |
+| Frontend | Next.js 15 (App Router, standalone output), TypeScript, TailwindCSS, TanStack Query | Admin panel |
 | Backend | NestJS, TypeScript | REST API |
 | ORM | TypeORM | Migrations via the TypeORM CLI |
-| Database | PostgreSQL 16 | |
+| Database | PostgreSQL 16 | Row-Level Security; API connects as the non-superuser `app_runtime` role |
+| Queue / cache | Redis 7, BullMQ (`ioredis`) | Background jobs (outbox → queue) |
+| Multi-tenancy | `nestjs-cls` | Per-request tenant context feeding RLS |
+| Metrics | `prom-client` | `/metrics` endpoint |
+| Reverse proxy | Caddy 2 | `proxy` service in compose, port 8080 |
 | Auth | JWT (access + refresh) via Passport.js, bcrypt | |
 | Validation | class-validator / class-transformer (API), Zod (frontend) | |
 | API docs | @nestjs/swagger (OpenAPI) | Live docs at `/api/docs` |
@@ -58,7 +62,7 @@ flowchart TB
 ## 5. Repository Structure
 
 ```
-store-saas/
+store-management-saas/
 ├── apps/
 │   ├── api/                 # NestJS backend
 │   │   ├── src/
@@ -74,6 +78,12 @@ store-saas/
 │   │   │   ├── uploads/               # StorageProvider, LocalDiskStorageProvider, S3StorageProvider
 │   │   │   ├── mail/                  # MailProvider, MailhogMailProvider, SmtpMailProvider
 │   │   │   ├── metrics/               # Prometheus /metrics endpoint + HTTP request interceptor
+│   │   │   ├── health/                # health check endpoint
+│   │   │   ├── audit/                 # audit log
+│   │   │   ├── idempotency/           # Idempotency-Key handling
+│   │   │   ├── outbox/                # transactional outbox
+│   │   │   ├── queue/                 # BullMQ queues/workers
+│   │   │   ├── tenant-context/        # per-request tenant context (RLS)
 │   │   │   ├── common/       # guards, filters, decorators, enums, dto, utils
 │   │   │   └── database/     # data-source.ts, migrations/, seed.ts
 │   │   ├── Dockerfile
@@ -89,11 +99,18 @@ store-saas/
 ├── monitoring/              # prometheus.yml, alerts.yml (+ alerts.test.yml)
 ├── db/init/                 # 01-create-app-runtime-role.sh (RLS role)
 ├── docker-compose.yml
-├── .github/workflows/        # ci.yml, backup.yml
+├── Caddyfile                # reverse proxy config
+├── .github/
+│   ├── dependabot.yml
+│   └── workflows/           # ci.yml, backup.yml
 ├── docs/
 │   ├── ARCHITECTURE.md      # this file
-│   └── CHANGELOG.md         # build & testing history
+│   ├── CHANGELOG.md         # build & testing history
+│   ├── DEPLOYMENT.md        # deployment runbooks
+│   ├── TESTING_CHECKLIST.md # manual browser checklist
+│   └── screenshots/
 ├── .env.example
+├── LICENSE
 └── README.md
 ```
 
@@ -110,6 +127,7 @@ erDiagram
     CATEGORY ||--o{ PRODUCT : groups
     PRODUCT ||--o{ ORDER_ITEM : "sold in"
     "ORDER" ||--o{ ORDER_ITEM : contains
+    STORE ||--o{ AUDIT_LOG : "audited in"
 
     USER {
         uuid id
@@ -122,6 +140,7 @@ erDiagram
         uuid id
         string name
         uuid ownerId
+        bool isSuspended
     }
     SUBSCRIPTION {
         uuid id
@@ -129,6 +148,7 @@ erDiagram
         enum plan
         enum status
         string stripeCustomerId
+        string stripeSubscriptionId
     }
     CATEGORY {
         uuid id
@@ -154,12 +174,40 @@ erDiagram
         uuid id
         uuid orderId
         uuid productId
+        string productName
         int quantity
         decimal unitPrice
     }
+    AUDIT_LOG {
+        uuid id
+        uuid actorUserId
+        string actorEmail
+        string actorRole
+        uuid storeId
+        string action
+        string targetId
+        jsonb metadata
+    }
+    WEBHOOK_EVENT {
+        string eventId
+        string provider
+        timestamp processedAt
+    }
+    IDEMPOTENCY_RECORD {
+        string id
+        int statusCode
+        jsonb responseBody
+    }
+    OUTBOX_EVENT {
+        uuid id
+        string eventType
+        jsonb payload
+        bool processed
+        timestamp processedAt
+    }
 ```
 
-`ORDER` is quoted in the diagram since it's a reserved word in some renderers.
+`ORDER` is quoted in the diagram since it's a reserved word in some renderers. `WEBHOOK_EVENT`, `IDEMPOTENCY_RECORD` and `OUTBOX_EVENT` are standalone infrastructure tables (payment-webhook de-duplication, `Idempotency-Key` response cache, transactional outbox) with no foreign keys. `AUDIT_LOG` rows carry a nullable `storeId`, not a foreign key. Row-Level Security is enabled on `products`, `categories` and `orders` only.
 
 ## 7. Roles & Permissions
 
@@ -196,12 +244,17 @@ Full live spec at `/api/docs` (Swagger) once running.
 | GET/PATCH/DELETE | `/products/:id` | Owner, Staff | Detail / update / delete |
 | POST | `/products/:id/image` | Owner, Staff | Upload image |
 | GET/POST | `/categories` | Owner, Staff | List / create |
-| GET/POST | `/orders` | Owner, Staff | List (filter/paginate) / create |
+| GET/PATCH/DELETE | `/categories/:id` | Owner, Staff | Detail / update / delete |
+| GET/POST | `/orders` | Owner, Staff | List (filter/paginate) / create (supports `Idempotency-Key`) |
 | GET/PATCH | `/orders/:id` | Owner, Staff | Detail / update status |
 | GET | `/billing/subscription` | Owner | Current plan & status |
-| POST | `/billing/checkout-session` | Owner | Start upgrade (mock or Stripe test mode) |
+| POST | `/billing/checkout-session` | Owner | Start upgrade (mock or Stripe test mode; supports `Idempotency-Key`) |
 | POST | `/billing/webhook` | Public, signature-verified | Payment provider webhook |
-| GET/PATCH | `/admin/stores` | SuperAdmin | Platform-wide store management |
+| GET | `/admin/stores` | SuperAdmin | Platform-wide store list |
+| PATCH | `/admin/stores/:id/suspend` | SuperAdmin | Suspend / reactivate a store (audited) |
+| GET | `/audit-logs` | Owner | Audit trail for the current store, most recent first |
+| GET | `/health` | Public | Liveness check |
+| GET | `/metrics` | Public | Prometheus metrics |
 
 `/products` and `/orders` support `?search=&category=&minPrice=&maxPrice=&status=&page=&limit=`.
 
@@ -269,13 +322,13 @@ interface PaymentProvider {
 
 ## 15. Docker & Local Development
 
-`docker-compose.yml` runs all four services: `postgres`, `api`, `web`, `mailhog`. The `api` container runs migrations against the compiled data source, then starts the server.
+`docker-compose.yml` runs six services: `postgres`, `redis`, `api`, `mailhog`, `web`, `proxy` (Caddy). The `api` container runs migrations against the compiled data source, then starts the server.
 
 ```bash
 git clone <repo-url>
-cd store-saas
+cd store-management-saas
 cp .env.example .env
-docker-compose up --build
+docker compose up --build
 # API      → http://localhost:3000  (Swagger: /api/docs)
 # Web      → http://localhost:3001
 # Mailhog  → http://localhost:8025
@@ -296,23 +349,26 @@ Everything is containerized, so any Docker-capable host works. Two options, writ
 | VPS + `docker-compose` | Low-medium | Full control, cheapest, no vendor lock-in |
 | Managed container platform (e.g. Railway, Render, Fly.io) | Very low | Push-to-deploy, good for demos, small free/cheap tier |
 
-Both are standard, well-documented paths — follow the runbook directly against your own account. `docs/DEPLOYMENT.md` also has rollback guidance (previous-image redeploy, `migration:revert` for schema changes, restore-from-backup as the last resort).
+Both are standard, well-documented paths — follow the runbook directly against your own account.
+
+**Live instance:** the running deployment uses neither option. It runs `docker compose` (including the `proxy` Caddy service on port 8080) on a single host machine that sits behind CGNAT with no public IP. A Cloudflare Tunnel (`cloudflared`) on a small relay VPS forwards a public hostname to that machine over SSH remote port forwarding (`ssh -R`); Cloudflare terminates TLS. Consequences: the site is only reachable while the host machine, Docker and the tunnel are running, and `COOKIE_SECURE` must be `true` there because the public URL is HTTPS. Details are in the README's "Live deployment (verified)" section. `docs/DEPLOYMENT.md` also has rollback guidance (previous-image redeploy, `migration:revert` for schema changes, restore-from-backup as the last resort).
 
 ## 17. Production Readiness
 
 This is a production-oriented MVP foundation, not yet hardened for commercial-scale workloads. `README.md`'s "Known limitations" section links here.
 
 **Before any real deployment**
-- Actually deploying to a cloud target and verifying it live — no live account has been deployed to yet
+- A managed cloud target — the live instance runs from a single host machine via a tunnel, so uptime depends on that machine; there is no redundancy or staging
 - Real Stripe billing in an actual account — `createCheckoutSession` has never made a real call to `api.stripe.com`
 - A real S3/R2/Spaces bucket — `S3StorageProvider` is implemented and tested against a local S3-compatible server, not a real bucket
 - Automated backups against the Dockerized or a cloud Postgres specifically (verified so far against a real local Postgres only); `backup.yml`'s daily schedule is disabled until a real `DATABASE_URL` secret exists
-- Centralized monitoring/alerting on top of the existing `/metrics` endpoint — nothing is scraping it yet
-- Next.js 14 and `@nestjs/core` are both a major version behind, with CVEs only patched upstream — flagged, not fixed
+- Centralized monitoring/alerting: `/metrics` and alert rules (`monitoring/alerts.yml`) exist, but nothing live is scraping or alerting on them yet
+- `/metrics` and `/health` are unauthenticated, and the Caddy proxy forwards `/api/*` to the API, so both are reachable from the public URL as `/api/metrics` and `/api/health` — block `/api/metrics` at the proxy or firewall it before relying on it
+- `@nestjs/core` is still one major version behind (10, latest is 11), with CVEs only patched upstream — flagged, not fixed. Next.js was upgraded 14→15.
 - Rate limiting is still one blanket global limit for most routes, beyond the auth-specific ones listed in [Auth & Security](#9-auth--security)
 
 **Valuable next**
-- Alerts on top of the metrics endpoint
+- A running Prometheus + Alertmanager wired to the existing alert rules
 - A staging environment and a rehearsed rollback
 
 **For scale, not correctness**
@@ -323,7 +379,7 @@ This is a production-oriented MVP foundation, not yet hardened for commercial-sc
 
 - Free/Pro plan limits are placeholder values — one config change.
 - Orders currently model owner/staff-entered sales (POS-style), not a public customer storefront.
-- Final cloud target (VPS vs. managed platform) is still an open choice — both runbooks are ready.
+- The two runbooks in `docs/DEPLOYMENT.md` (VPS, managed platform) are ready but were not used for the live instance, which uses the tunnel setup described in [Deployment](#16-deployment).
 - No admin-side "reset this other user's password" tool exists yet — only the self-service email flow.
 
 ---

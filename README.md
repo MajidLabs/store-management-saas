@@ -31,7 +31,7 @@ A multi-tenant SaaS for managing retail stores: store owners sign up, subscribe 
 
 ## Stack
 
-Next.js 14 (admin panel) · NestJS + TypeORM + PostgreSQL (API) · Docker Compose · GitHub Actions (CI on every push/PR; on-demand database backups)
+Next.js 15 (admin panel) · NestJS + TypeORM + PostgreSQL (API) · Docker Compose · GitHub Actions (CI on every push/PR; on-demand database backups)
 
 ## Architecture
 
@@ -81,7 +81,7 @@ pnpm --filter api test:e2e       # API/e2e, against a real Postgres connection
 pnpm --filter web lint
 ```
 
-An interactive browser checklist (**[docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md)**) now covers tenant-isolation cross-store checks and password-reset/CSRF/rate-limit checks specifically (§9-10), plus a focused §11 that re-verified the 5 September 2026 fixes below - both the full §1-10 pass and the §11 re-verification are done, neither repeated here. The first full run, in September 2026, was manual: the developer clicking through the actual running app in a real Chrome tab, not code review and not automated tooling — and that hands-on pass is exactly how the 4 real bugs below were caught (2 with a different root cause than first suspected - see [CHANGELOG.md](docs/CHANGELOG.md) — "Manual Browser Testing Pass"). None of them were visible from the API-level tests alone; that's the gap manual browser testing exists to catch. All 4 are fixed, covered by new/updated unit and e2e tests, and the fixes themselves have since been re-confirmed directly in an actual browser tab too (§11, see [CHANGELOG.md](docs/CHANGELOG.md) — "Browser Re-Confirmation"). Every other check in this project remains at the API level (curl / Supertest).
+An interactive browser checklist (**[docs/TESTING_CHECKLIST.md](docs/TESTING_CHECKLIST.md)**) now covers tenant-isolation cross-store checks and password-reset/CSRF/rate-limit checks specifically (§9-10), plus a focused §11 that re-verified the 5 September 2026 fixes (listed in [CHANGELOG.md](docs/CHANGELOG.md)) - both the full §1-10 pass and the §11 re-verification are done, neither repeated here. The first full run, in September 2026, was manual: the developer clicking through the actual running app in a real Chrome tab, not code review and not automated tooling — and that hands-on pass is exactly how 4 real bugs were caught (2 with a different root cause than first suspected - see [CHANGELOG.md](docs/CHANGELOG.md) — "Manual Browser Testing Pass"). None of them were visible from the API-level tests alone; that's the gap manual browser testing exists to catch. All 4 were fixed, covered by new/updated unit and e2e tests, and the fixes themselves have since been re-confirmed directly in an actual browser tab too (§11, see [CHANGELOG.md](docs/CHANGELOG.md) — "Browser Re-Confirmation"). Every other check in this project remains at the API level (curl / Supertest).
 
 ## Deployment
 
@@ -89,7 +89,7 @@ An interactive browser checklist (**[docs/TESTING_CHECKLIST.md](docs/TESTING_CHE
 
 ```bash
 git clone <this-repo-url>
-cd store-saas
+cd store-management-saas
 cp .env.example .env
 docker compose up --build
 ```
@@ -139,6 +139,7 @@ Deployed and manually tested live at a public domain, reachable from outside the
 
 - **Reverse tunnel**: the host machine sits behind CGNAT with no public IP, so an outbound-only Cloudflare Tunnel (`cloudflared`) running on a small relay VPS forwards a public hostname to the host machine over SSH remote port forwarding (`ssh -R`) — no inbound ports opened on the host itself.
 - **Single-origin reverse proxy**: `web` and `api` are fronted by a small Caddy proxy on one port, splitting by path (`/api/*` → `api:3000`, everything else → `web:3001`) — the same path-splitting approach as the Caddyfile in `docs/DEPLOYMENT.md`, except listening on a plain `:8080` instead of the domain directly, since Cloudflare Tunnel (not Caddy) terminates TLS and owns the public hostname here. This matters because `NEXT_PUBLIC_API_URL` is baked into the Next.js bundle at **build time**, not read at container runtime — the web image must be built with `NEXT_PUBLIC_API_URL=https://<your-domain>/<api-path>` pointing at the final public URL *before* `docker compose up`, matching the build-time-variable guidance in `docs/DEPLOYMENT.md`. Building it with the default (`http://localhost:3000`) produces an image that silently fails every API call from any browser but the one that built it — the browser tries to reach its own `localhost`, not the real server.
+- Availability: the site is only reachable while the host machine, Docker Compose and the tunnel are all running. Set `COOKIE_SECURE=true` for this HTTPS setup.
 - Full manual testing checklist (register, products + image upload, orders with stock adjustment, staff RBAC, billing mock-upgrade, SuperAdmin suspend/reactivate) passed end-to-end against the live public URL, not just `localhost`.
 
 ### Zero-config by default
@@ -160,7 +161,7 @@ This is a production-capable MVP foundation, not yet hardened for commercial-sca
 - PostgreSQL Row-Level Security now covers `products`, `categories`, and `orders` (see [CHANGELOG.md](docs/CHANGELOG.md) — "RLS Extended to Categories and Orders") - `order_items` and other tables still rely on application-level tenant filtering alone, not a database-level policy
 - Production backup/restore verification (tested locally against real PostgreSQL, not against a deployed target)
 - Monitoring/alerting deployment (a Prometheus metrics endpoint and alert definitions exist and are tested with `promtool`; nothing live is scraping or alerting on them yet)
-- Dependency upgrades (Next.js 14→15, `@nestjs/core` 10→11 — both flagged, deliberately not attempted this pass)
+- Dependency upgrade `@nestjs/core` 10→11 (flagged, deliberately not attempted this pass; Next.js was already upgraded 14→15)
 
 A hardening pass already closed a substantial list of related gaps at the code level — a background job queue, the outbox pattern, audit logs, an automated tenant-isolation suite, PostgreSQL Row-Level Security on `products`, and more — each genuinely tested locally, not just written. A follow-up pass ran the first real browser testing checklist and fixed everything it found, and a later pass re-confirmed all 5 of those fixes directly in a browser too - the full checklist (§1-11) is now complete. RLS was then extended to `categories` and `orders` too, and a real CI pipeline was built and locally verified. Full build and testing history — what was tried, found, and fixed along the way: **[docs/CHANGELOG.md](docs/CHANGELOG.md)**. Current-state architecture only: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 
